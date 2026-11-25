@@ -1,0 +1,5 @@
+lighthouse_version: "1.0.0"
+lighthouse_release_url: "https://github.com/VKCOM/lighthouse/releases/download/v{{ lighthouse_version }}/lighthouse-{{ lighthouse_version }}.tar.gz"
+lighthouse_install_dir: "/var/www/lighthouse"
+nginx_config_path: "/etc/nginx/sites-available/lighthouse"
+nginx_enabled_path: "/etc/nginx/sites-enabled/lighthouse"

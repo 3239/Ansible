@@ -1,0 +1,217 @@
+- name: Install and configure Clickhouse
+  hosts: clickhouse
+  become: true
+  tags:
+    - clickhouse
+  handlers:
+    - name: Restart clickhouse service
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: restarted
+
+  tasks:
+    - name: Install prerequisites for HTTPS repositories
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+        update_cache: true
+
+    - name: Add ClickHouse GPG key
+      ansible.builtin.apt_key:
+        url: https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key
+        state: present
+
+    - name: Add ClickHouse repository
+      ansible.builtin.apt_repository:
+        repo: "deb https://packages.clickhouse.com/deb stable main"
+        state: present
+        filename: clickhouse
+
+    - name: Install Clickhouse packages
+      ansible.builtin.apt:
+        name:
+          - clickhouse-common-static
+          - clickhouse-client
+          - clickhouse-server
+        state: present
+        update_cache: true
+      notify: Restart clickhouse service
+
+    - name: Flush handlers to start service before DB creation
+      ansible.builtin.meta: flush_handlers
+
+    - name: Create database in Clickhouse
+      ansible.builtin.command: "clickhouse-client -q 'create database logs;'"
+      register: create_db
+      failed_when: create_db.rc != 0 and create_db.rc != 82
+      changed_when: create_db.rc == 0
+
+
+- name: Install and configure Vector
+  hosts: vector
+  become: true
+  tags:
+    - vector
+  handlers:
+    - name: Restart vector service
+      ansible.builtin.service:
+        name: vector
+        state: restarted
+
+  tasks:
+    - name: Create vector installation directory
+      ansible.builtin.file:
+        path: "{{ vector_install_dir }}/bin"
+        state: directory
+        mode: '0755'
+
+    - name: Download Vector distribution
+      ansible.builtin.get_url:
+        url: "https://github.com/vectordotdev/vector/releases/download/v{{ vector_version }}/vector-{{ vector_version }}-{{ vector_arch }}.tar.gz"
+        dest: "/tmp/vector-{{ vector_version }}.tar.gz"
+        mode: '0644'
+
+    - name: Create temp directory for vector extraction
+      ansible.builtin.file:
+        path: "/tmp/vector-extract"
+        state: directory
+        mode: '0755'
+
+    - name: Extract Vector archive to temp directory
+      ansible.builtin.unarchive:
+        src: "/tmp/vector-{{ vector_version }}.tar.gz"
+        dest: "/tmp/vector-extract"
+        remote_src: true
+
+    - name: Find vector binary in extracted archive
+      ansible.builtin.find:
+        paths: "/tmp/vector-extract"
+        patterns: "vector"
+        file_type: file
+        recurse: true
+      register: vector_binary
+
+    - name: Copy vector binary to installation directory
+      ansible.builtin.copy:
+        src: "{{ vector_binary.files[0].path }}"
+        dest: "{{ vector_install_dir }}/bin/vector"
+        mode: '0755'
+        remote_src: true
+
+    - name: Create vector config directory
+      ansible.builtin.file:
+        path: "/etc/vector"
+        state: directory
+        mode: '0755'
+
+    - name: Deploy vector configuration via jinja2 template
+      ansible.builtin.template:
+        src: "templates/vector.toml.j2"
+        dest: "/etc/vector/vector.toml"
+        mode: '0644'
+      notify: Restart vector service
+
+    - name: Deploy vector systemd service file
+      ansible.builtin.template:
+        src: "templates/vector.service.j2"
+        dest: "/etc/systemd/system/vector.service"
+        mode: '0644'
+      notify: Restart vector service
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Ensure vector service is started and enabled
+      ansible.builtin.systemd:
+        name: vector
+        state: started
+        enabled: true
+        daemon_reload: false
+
+
+- name: Install and configure LightHouse
+  hosts: lighthouse
+  become: true
+  tags:
+    - lighthouse
+  handlers:
+    - name: Restart nginx service
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+    - name: Reload nginx service
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+
+  tasks:
+    - name: Install Nginx and prerequisites
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - curl
+          - tar
+        state: present
+        update_cache: true
+
+    - name: Create LightHouse installation directory
+      ansible.builtin.file:
+        path: "{{ lighthouse_install_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Download LightHouse static files
+      ansible.builtin.get_url:
+        url: "{{ lighthouse_release_url }}"
+        dest: "/tmp/lighthouse-{{ lighthouse_version }}.tar.gz"
+        mode: '0644'
+
+    - name: Extract LightHouse archive
+      ansible.builtin.unarchive:
+        src: "/tmp/lighthouse-{{ lighthouse_version }}.tar.gz"
+        dest: "{{ lighthouse_install_dir }}"
+        remote_src: true
+        extra_opts: [--strip-components=1]
+
+    - name: Deploy Nginx configuration for LightHouse
+      ansible.builtin.template:
+        src: "templates/lighthouse_nginx.conf.j2"
+        dest: "{{ nginx_config_path }}"
+        mode: '0644'
+      notify: Restart nginx service
+
+    - name: Enable LightHouse site in Nginx
+      ansible.builtin.file:
+        src: "{{ nginx_config_path }}"
+        dest: "{{ nginx_enabled_path }}"
+        state: link
+      notify: Reload nginx service
+
+    - name: Remove default Nginx site
+      ansible.builtin.file:
+        path: "/etc/nginx/sites-enabled/default"
+        state: absent
+      notify: Reload nginx service
+
+    - name: Deploy LightHouse configuration
+      ansible.builtin.template:
+        src: "templates/lighthouse_config.json.j2"
+        dest: "{{ lighthouse_install_dir }}/config.json"
+        mode: '0644'
+
+    - name: Test Nginx configuration
+      ansible.builtin.command: nginx -t
+      register: nginx_test
+      changed_when: false
+      failed_when: nginx_test.rc != 0
+
+    - name: Ensure nginx service is started and enabled
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: true

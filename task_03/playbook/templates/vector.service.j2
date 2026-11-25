@@ -1,0 +1,11 @@
+[Unit]
+Description=Vector Service
+After=network.target
+
+[Service]
+ExecStart={{ vector_install_dir }}/bin/vector --config /etc/vector/vector.toml
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target

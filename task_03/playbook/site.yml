@@ -1,14 +1,9 @@
+---
 - name: Install and configure Clickhouse
   hosts: clickhouse
   become: true
   tags:
     - clickhouse
-  handlers:
-    - name: Restart clickhouse service
-      ansible.builtin.service:
-        name: clickhouse-server
-        state: restarted
-
   tasks:
     - name: Install prerequisites for HTTPS repositories
       ansible.builtin.apt:
@@ -20,16 +15,37 @@
         state: present
         update_cache: true
 
-    - name: Add ClickHouse GPG key
-      ansible.builtin.apt_key:
-        url: https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key
-        state: present
+    - name: Ensure keyring directory exists
+      ansible.builtin.file:
+        path: /usr/share/keyrings
+        state: directory
+        mode: '0755'
 
-    - name: Add ClickHouse repository
-      ansible.builtin.apt_repository:
-        repo: "deb https://packages.clickhouse.com/deb stable main"
-        state: present
-        filename: clickhouse
+    - name: Download ClickHouse GPG key
+      ansible.builtin.get_url:
+        url: https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key
+        dest: /tmp/clickhouse-key.gpg
+        mode: '0644'
+
+    - name: Convert and install ClickHouse GPG key
+      ansible.builtin.command: gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg /tmp/clickhouse-key.gpg
+      args:
+        creates: /usr/share/keyrings/clickhouse-keyring.gpg
+
+    - name: Get system architecture
+      ansible.builtin.command: dpkg --print-architecture
+      register: dpkg_arch
+      changed_when: false
+
+    - name: Add ClickHouse repository with signed-by and arch
+      ansible.builtin.copy:
+        content: "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch={{ dpkg_arch.stdout }}] https://packages.clickhouse.com/deb stable main\n"
+        dest: /etc/apt/sources.list.d/clickhouse.list
+        mode: '0644'
+
+    - name: Update apt cache after adding repository
+      ansible.builtin.apt:
+        update_cache: true
 
     - name: Install Clickhouse packages
       ansible.builtin.apt:
@@ -38,17 +54,33 @@
           - clickhouse-client
           - clickhouse-server
         state: present
-        update_cache: true
-      notify: Restart clickhouse service
 
-    - name: Flush handlers to start service before DB creation
-      ansible.builtin.meta: flush_handlers
+    - name: Reload systemd daemon to recognize new clickhouse service
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Ensure clickhouse-server is started and enabled
+      ansible.builtin.systemd:
+        name: clickhouse-server
+        state: started
+        enabled: true
+      check_mode: false
+
+    - name: Wait for ClickHouse to be ready
+      ansible.builtin.command: clickhouse-client -q "SELECT 1"
+      register: ch_ready
+      until: ch_ready.rc == 0
+      retries: 5
+      delay: 3
+      changed_when: false
+      check_mode: false
 
     - name: Create database in Clickhouse
-      ansible.builtin.command: "clickhouse-client -q 'create database logs;'"
+      ansible.builtin.command: "clickhouse-client -q 'CREATE DATABASE IF NOT EXISTS logs;'"
       register: create_db
       failed_when: create_db.rc != 0 and create_db.rc != 82
       changed_when: create_db.rc == 0
+      check_mode: false
 
 
 - name: Install and configure Vector
@@ -132,6 +164,7 @@
         state: started
         enabled: true
         daemon_reload: false
+      check_mode: false
 
 
 - name: Install and configure LightHouse
@@ -165,15 +198,15 @@
         state: directory
         mode: '0755'
 
-    - name: Download LightHouse static files
+    - name: Download LightHouse static files (master branch archive)
       ansible.builtin.get_url:
-        url: "{{ lighthouse_release_url }}"
-        dest: "/tmp/lighthouse-{{ lighthouse_version }}.tar.gz"
+        url: "{{ lighthouse_repo_url }}"
+        dest: "/tmp/lighthouse-master.tar.gz"
         mode: '0644'
 
     - name: Extract LightHouse archive
       ansible.builtin.unarchive:
-        src: "/tmp/lighthouse-{{ lighthouse_version }}.tar.gz"
+        src: "/tmp/lighthouse-master.tar.gz"
         dest: "{{ lighthouse_install_dir }}"
         remote_src: true
         extra_opts: [--strip-components=1]
@@ -215,3 +248,4 @@
         name: nginx
         state: started
         enabled: true
+      check_mode: false

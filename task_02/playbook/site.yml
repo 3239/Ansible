@@ -28,16 +28,16 @@
 
     - name: Add ClickHouse repository
       ansible.builtin.apt_repository:
-        repo: "deb https://packages.clickhouse.com/deb/stable/ main/"
+        repo: "deb https://packages.clickhouse.com/deb stable main"
         state: present
         filename: clickhouse
 
     - name: Install Clickhouse packages
       ansible.builtin.apt:
         name:
-          - clickhouse-common-static={{ clickhouse_version }}
-          - clickhouse-client={{ clickhouse_version }}
-          - clickhouse-server={{ clickhouse_version }}
+          - clickhouse-common-static
+          - clickhouse-client
+          - clickhouse-server
         state: present
         update_cache: true
       notify: Restart clickhouse service
@@ -64,9 +64,21 @@
         state: restarted
 
   tasks:
+- name: Install and configure Vector
+  hosts: vector
+  become: true
+  tags:
+    - vector
+  handlers:
+    - name: Restart vector service
+      ansible.builtin.service:
+        name: vector
+        state: restarted
+
+  tasks:
     - name: Create vector installation directory
       ansible.builtin.file:
-        path: "{{ vector_install_dir }}"
+        path: "{{ vector_install_dir }}/bin"
         state: directory
         mode: '0755'
 
@@ -76,12 +88,32 @@
         dest: "/tmp/vector-{{ vector_version }}.tar.gz"
         mode: '0644'
 
-    - name: Extract Vector to installation directory
+    - name: Create temp directory for vector extraction
+      ansible.builtin.file:
+        path: "/tmp/vector-extract"
+        state: directory
+        mode: '0755'
+
+    - name: Extract Vector archive to temp directory
       ansible.builtin.unarchive:
         src: "/tmp/vector-{{ vector_version }}.tar.gz"
-        dest: "{{ vector_install_dir }}"
+        dest: "/tmp/vector-extract"
         remote_src: true
-        extra_opts: [--strip-components=1]
+
+    - name: Find vector binary in extracted archive
+      ansible.builtin.find:
+        paths: "/tmp/vector-extract"
+        patterns: "vector"
+        file_type: file
+        recurse: true
+      register: vector_binary
+
+    - name: Copy vector binary to installation directory
+      ansible.builtin.copy:
+        src: "{{ vector_binary.files[0].path }}"
+        dest: "{{ vector_install_dir }}/bin/vector"
+        mode: '0755'
+        remote_src: true
 
     - name: Create vector config directory
       ansible.builtin.file:
@@ -107,8 +139,21 @@
       ansible.builtin.systemd:
         daemon_reload: true
 
-    - name: Ensure vector service is started and enabled
-      ansible.builtin.service:
+    - name: Check if vector service is running
+      ansible.builtin.command: systemctl is-active --quiet vector
+      register: vector_status
+      changed_when: false
+      failed_when: false
+
+    - name: Start vector service if not running
+      ansible.builtin.systemd:
         name: vector
         state: started
         enabled: true
+      when: vector_status.rc != 0
+
+    - name: Ensure vector service is enabled
+      ansible.builtin.systemd:
+        name: vector
+        enabled: true
+      when: vector_status.rc == 0

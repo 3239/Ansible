@@ -1,0 +1,11 @@
+data_dir = "/var/lib/vector"
+
+[sources.demo_logs]
+type = "demo_logs"
+format = "json"
+count = 100
+
+[sinks.console_out]
+type = "console"
+inputs = ["demo_logs"]
+encoding.codec = "json"

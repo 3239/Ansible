@@ -1,56 +1,56 @@
 # Ansible Playbook: ClickHouse & Vector Installation
 
-\u0410\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u0430\u044f \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0430 \u0438 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430 \u0421\u0423\u0411\u0414 ClickHouse \u0438 \u0430\u0433\u0435\u043d\u0442\u0430 \u0441\u0431\u043e\u0440\u0430 \u043b\u043e\u0433\u043e\u0432 Vector \u043d\u0430 Ubuntu (localhost).
+Автоматизированная установка и настройка СУБД ClickHouse и агента сбора логов Vector на Ubuntu (localhost).
 
-# \u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435
+##  Описание
 
-Playbook \u0441\u043e\u0441\u0442\u043e\u0438\u0442 \u0438\u0437 \u0434\u0432\u0443\u0445 play:
+Playbook состоит из двух play:
 
-# Play 1: ClickHouse
-- \u0423\u0441\u0442\u0430\u043d\u0430\u0432\u043b\u0438\u0432\u0430\u0435\u0442 \u0437\u0430\u0432\u0438\u0441\u0438\u043c\u043e\u0441\u0442\u0438 \u0434\u043b\u044f HTTPS-\u0440\u0435\u043f\u043e\u0437\u0438\u0442\u043e\u0440\u0438\u0435\u0432
-- \u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0430\u0435\u0442 \u043e\u0444\u0438\u0446\u0438\u0430\u043b\u044c\u043d\u044b\u0439 APT-\u0440\u0435\u043f\u043e\u0437\u0438\u0442\u043e\u0440\u0438\u0439 ClickHouse
-- \u0423\u0441\u0442\u0430\u043d\u0430\u0432\u043b\u0438\u0432\u0430\u0435\u0442 \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u044e\u044e \u0432\u0435\u0440\u0441\u0438\u044e \u043f\u0430\u043a\u0435\u0442\u043e\u0432: clickhouse-common-static, clickhouse-client, clickhouse-server
-- \u0417\u0430\u043f\u0443\u0441\u043a\u0430\u0435\u0442 \u0441\u0435\u0440\u0432\u0438\u0441 \u0447\u0435\u0440\u0435\u0437 handler
-- \u0421\u043e\u0437\u0434\u0430\u0451\u0442 \u0431\u0430\u0437\u0443 \u0434\u0430\u043d\u043d\u044b\u0445 logs.
+### Play 1: ClickHouse
+- Устанавливает зависимости для HTTPS-репозиториев
+- Подключает официальный APT-репозиторий ClickHouse
+- Устанавливает последнюю версию пакетов: `clickhouse-common-static`, `clickhouse-client`, `clickhouse-server`
+- Запускает сервис через handler
+- Создаёт базу данных `logs`
 
-# Play 2: Vector
-- \u0421\u043a\u0430\u0447\u0438\u0432\u0430\u0435\u0442 \u0431\u0438\u043d\u0430\u0440\u043d\u044b\u0439 \u0434\u0438\u0441\u0442\u0440\u0438\u0431\u0443\u0442\u0438\u0432 Vector (tar.gz) \u0441 GitHub
-- \u0420\u0430\u0441\u043f\u0430\u043a\u043e\u0432\u044b\u0432\u0430\u0435\u0442 \u0430\u0440\u0445\u0438\u0432 \u0438 \u0438\u0437\u0432\u043b\u0435\u043a\u0430\u0435\u0442 \u0431\u0438\u043d\u0430\u0440\u043d\u0438\u043a \u0432 /opt/vector/bin/vector
-- \u0414\u0435\u043f\u043b\u043e\u0438\u0442 \u043a\u043e\u043d\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044e /etc/vector/vector.toml \u0447\u0435\u0440\u0435\u0437 Jinja2-\u0448\u0430\u0431\u043b\u043e\u043d
-- \u0423\u0441\u0442\u0430\u043d\u0430\u0432\u043b\u0438\u0432\u0430\u0435\u0442 systemd-\u044e\u043d\u0438\u0442 /etc/systemd/system/vector.service
-- \u0412\u043a\u043b\u044e\u0447\u0430\u0435\u0442 \u0430\u0432\u0442\u043e\u0437\u0430\u043f\u0443\u0441\u043a \u0441\u0435\u0440\u0432\u0438\u0441\u0430
-- \u041f\u0435\u0440\u0435\u0437\u0430\u043f\u0443\u0441\u043a\u0430\u0435\u0442 Vector \u043f\u0440\u0438 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0438 \u043a\u043e\u043d\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 (handler)
+### Play 2: Vector
+- Скачивает бинарный дистрибутив Vector (tar.gz) с GitHub
+- Распаковывает архив и извлекает бинарник в `/opt/vector/bin/vector`
+- Деплоит конфигурацию `/etc/vector/vector.toml` через Jinja2-шаблон
+- Устанавливает systemd-юнит `/etc/systemd/system/vector.service`
+- Включает автозапуск сервиса
+- Перезапускает Vector при изменении конфигурации (handler)
 
-# \u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u044b
-\u041f\u0435\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0435 \u0437\u0430\u0434\u0430\u044e\u0442\u0441\u044f \u0432 \u0434\u0438\u0440\u0435\u043a\u0442\u043e\u0440\u0438\u0438 group_vars/:
+## Параметры (переменные)
 
-# ClickHouse (group_vars/clickhouse/vars.yml)
-| \u041f\u0435\u0440\u0435\u043c\u0435\u043d\u043d\u0430\u044f | \u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 | \u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435 |
+Переменные задаются в директории `group_vars/`:
+
+### ClickHouse (`group_vars/clickhouse/vars.yml`)
+| Переменная | Описание | Значение |
 |------------|----------|----------|
-| clickhouse_version | \u0412\u0435\u0440\u0441\u0438\u044f ClickHouse | \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u044f\u044f \u0438\u0437 \u0440\u0435\u043f\u043e\u0437\u0438\u0442\u043e\u0440\u0438\u044f |
+| `clickhouse_version` | Версия ClickHouse | последняя из репозитория |
 
-# Vector (group_vars/vector/vars.yml)
-| \u041f\u0435\u0440\u0435\u043c\u0435\u043d\u043d\u0430\u044f | \u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 | \u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u043f\u043e \u0443\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e |
+### Vector (`group_vars/vector/vars.yml`)
+| Переменная | Описание | Значение по умолчанию |
 |------------|----------|------------------------|
-| vector_version | \u0412\u0435\u0440\u0441\u0438\u044f Vector | 0.34.0 |
-| vector_arch | \u0410\u0440\u0445\u0438\u0442\u0435\u043a\u0442\u0443\u0440\u0430 Vector | x86_64-unknown-linux-gnu |
-| vector_install_dir | \u0414\u0438\u0440\u0435\u043a\u0442\u043e\u0440\u0438\u044f \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0438 Vector | /opt/vector |
+| `vector_version` | Версия Vector | `0.34.0` |
+| `vector_arch` | Архитектура Vector | `x86_64-unknown-linux-gnu` |
+| `vector_install_dir` | Директория установки Vector | `/opt/vector` |
 
-# \u0422\u0435\u0433\u0438
+# Теги
 
-Playbook \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442 \u0442\u0435\u0433\u0438 \u0434\u043b\u044f \u0432\u044b\u0431\u043e\u0440\u043e\u0447\u043d\u043e\u0433\u043e \u0437\u0430\u043f\u0443\u0441\u043a\u0430:
+Playbook поддерживает теги для выборочного запуска:
 
-\u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0430 \u0442\u043e\u043b\u044c\u043a\u043e ClickHouse
+### установка только ClickHouse
 ansible-playbook -i inventory/prod.yml site.yml --tags clickhouse --ask-become-pass
 
-\u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0430 \u0442\u043e\u043b\u044c\u043a\u043e Vector
+### установка только Vector
 ansible-playbook -i inventory/prod.yml site.yml --tags vector --ask-become-pass
 
-\u0417\u0430\u043f\u0443\u0441\u043a \u0432\u0441\u0435\u0445 play
+### запуск всех play
 ansible-playbook -i inventory/prod.yml site.yml --ask-become-pass
 
-# \u0421\u043a\u0440\u0438\u043d\u0448\u043e\u0442\u044b \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f
-
+# Скриншоты выполнения заданий №5-8
 5. 
 
 <img width="969" height="63" alt="image" src="https://github.com/user-attachments/assets/596873ee-f419-4d4f-b93b-e8586ac5536a" />
